@@ -15,42 +15,55 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    // Initial session fetch
-    const getSession = async () => {
-        
-      const { data, error } = await supabase.auth.getSession()
+useEffect(() => {
+  const initAuth = async () => {
+    const url = new URL(window.location.href);
+    const hasCode = url.searchParams.get("code");
+    const hasProvider = url.searchParams.get("provider");
+
+    // ✅ Step 1: Handle OAuth code exchange
+    if (hasCode && hasProvider) {
+      const { error } = await supabase.auth.exchangeCodeForSession();
       if (error) {
-        console.error("Error getting session:", error.message)
+        console.error("❌ Failed to exchange code for session:", error.message);
+      } else {
+        // Clean URL after exchange
+        const cleanUrl = window.location.origin + window.location.pathname;
+        window.history.replaceState({}, "", cleanUrl);
       }
-      const sessionUser = data.session?.user ?? null
-      setUser(sessionUser)
-      setLoading(false)
-
-      if (sessionUser) {
-        await createUserIfNotExists(sessionUser)
-      }
-      // console.log("Session User:", sessionUser)
-
     }
 
-    getSession()
-
-    const { data: listener } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      const sessionUser = session?.user ?? null
-      setUser(sessionUser)
-      setLoading(false)
-
-      if (sessionUser) {
-        await createUserIfNotExists(sessionUser)
-      }
-    })
-
-    return () => {
-      listener.subscription.unsubscribe()
+    // ✅ Step 2: Get current session
+    const { data, error } = await supabase.auth.getSession();
+    if (error) {
+      console.error("Error getting session:", error.message);
     }
-  }, [])
+    const sessionUser = data.session?.user ?? null;
+    setUser(sessionUser);
+    setLoading(false);
 
+    if (sessionUser) {
+      await createUserIfNotExists(sessionUser);
+    }
+  };
+
+  initAuth();
+
+  const { data: listener } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    const sessionUser = session?.user ?? null;
+    setUser(sessionUser);
+    setLoading(false);
+
+    if (sessionUser) {
+      await createUserIfNotExists(sessionUser);
+    }
+  });
+
+  return () => {
+    listener.subscription.unsubscribe();
+  };
+}, []);
+console.log("AuthProvider initialized", { user, loading });
   // Auto-insert user profile
   const createUserIfNotExists = async (user: User) => {
     const { data, error } = await supabase
