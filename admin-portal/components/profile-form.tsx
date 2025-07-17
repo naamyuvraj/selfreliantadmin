@@ -18,33 +18,35 @@ export function ProfileForm() {
     bio: "",
   })
 
-  useEffect(() => {
-    const fetchProfile = async () => {
-      if (!user) return
+useEffect(() => {
+  const fetchProfile = async () => {
+    if (!user) return
 
-const { data, error } = await supabase
-  .from("users")
-  .select("*")
-  .eq("id", user.id)
-  .maybeSingle() // ✅ safer than .single()
+    const { data, error } = await supabase
+      .from("users")
+      .select("*")
+      .eq("id", user.id)
+      .maybeSingle()
 
-      if (error) {
-        console.error("Error fetching profile:", error.message)
-      } else {
-        setFormData({
-          name: data.name || "",
-          email: user.email || "",
-          phone: data.phone || "",
-          address: data.address || "",
-          bio: data.bio || "",
-        })
-      }
-
-      setIsLoading(false)
+    if (error) {
+      console.error("Error fetching profile:", error.message)
+    } else {
+      setFormData({
+        name: data.name || "",
+        email: user.email || "",
+        phone: data.phone || "",
+        address: data.address || "",
+        bio: data.bio || "",
+      })
     }
 
-    if (!userLoading && user) fetchProfile()
-  }, [user, userLoading])
+    setIsLoading(false)
+  }
+
+  if (!userLoading && user) {
+    fetchProfile()
+  }
+}, [userLoading, user])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target

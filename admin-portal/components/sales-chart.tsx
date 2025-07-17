@@ -1,11 +1,12 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
+import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip } from "recharts"
 import { supabase } from "@/lib/supabaseClient"
+import { useAuth } from "@/context/user-context";
 
 interface SalesData {
-  name: string // e.g., "Jan"
+  name: string
   total: number
 }
 
@@ -20,41 +21,53 @@ const formatIndianCurrency = (value: number) => {
 
 export function SalesChart({ className }: { className?: string }) {
   const [data, setData] = useState<SalesData[]>([])
+  const { user } = useAuth() // 👈 Your logged-in user
 
   useEffect(() => {
-    const fetchMonthlySales = async () => {
+    if (!user?.id) return
+
+    const fetchSellerSales = async () => {
       const currentYear = new Date().getFullYear()
 
-      const { data: orders, error } = await supabase
-        .from("orders")
-        .select("total, created_at")
+      const { data: items, error } = await supabase
+        .from("order_items")
+        .select(`
+          price,
+          created_at,
+          product_id (
+            user_id
+          )
+        `)
         .gte("created_at", `${currentYear}-01-01`)
         .lte("created_at", `${currentYear}-12-31`)
 
       if (error) {
-        console.error("Error fetching sales:", error)
+        console.error("Error fetching sales:", error.message)
         return
       }
 
-      // Initialize monthly totals
-      const monthlyTotals: number[] = Array(12).fill(0)
+      // Filter only current seller's items
+      const sellerItems = items?.filter(
+        (item) => item.product_id?.user_id === user.id
+      )
 
-      orders?.forEach((order) => {
-        const date = new Date(order.created_at)
-        const monthIndex = date.getMonth()
-        monthlyTotals[monthIndex] += order.total
+      // Monthly aggregation
+      const monthlyTotals = Array(12).fill(0)
+      sellerItems?.forEach((item) => {
+        const month = new Date(item.created_at).getMonth()
+        monthlyTotals[month] += item.price
       })
 
-      const formattedData: SalesData[] = months.map((name, index) => ({
+      const formatted: SalesData[] = months.map((name, i) => ({
         name,
-        total: monthlyTotals[index],
+        total: monthlyTotals[i],
       }))
 
-      setData(formattedData)
+      setData(formatted)
     }
 
-    fetchMonthlySales()
-  }, [])
+    fetchSellerSales()
+  }, [user?.id])
 
   return (
     <div className={`${className} bg-white p-4 rounded-lg border border-gray-200 shadow-sm`}>
@@ -64,29 +77,11 @@ export function SalesChart({ className }: { className?: string }) {
       </div>
       <div className="h-[250px] sm:h-[300px]">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart
-            data={data}
-            margin={{ top: 5, right: 10, left: 10, bottom: 0 }}
-          >
-            <XAxis dataKey="name" stroke="#888888" fontSize={10} tickLine={false} axisLine={false} />
-            <YAxis
-              stroke="#888888"
-              fontSize={10}
-              tickLine={false}
-              axisLine={false}
-              tickFormatter={formatIndianCurrency}
-            />
-            <Tooltip
-              formatter={(value: number) => [formatIndianCurrency(value), "Sales"]}
-              labelStyle={{ color: "#333" }}
-            />
-            <Line
-              type="monotone"
-              dataKey="total"
-              stroke="#608C44"
-              strokeWidth={2}
-              activeDot={{ r: 4 }}
-            />
+          <LineChart data={data} margin={{ top: 5, right: 10, left: 10, bottom: 0 }}>
+            <XAxis dataKey="name" stroke="#888" fontSize={10} tickLine={false} axisLine={false} />
+            <YAxis stroke="#888" fontSize={10} tickLine={false} axisLine={false} tickFormatter={formatIndianCurrency} />
+            <Tooltip formatter={(val: number) => [formatIndianCurrency(val), "Sales"]} />
+            <Line type="monotone" dataKey="total" stroke="#608C44" strokeWidth={2} activeDot={{ r: 4 }} />
           </LineChart>
         </ResponsiveContainer>
       </div>

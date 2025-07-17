@@ -2,81 +2,105 @@
 
 import { useEffect, useState } from "react"
 import { supabase } from "@/lib/supabaseClient"
+import { useAuth } from "@/context/user-context"
+import { format } from "date-fns"
 
 interface Sale {
   id: string
-  total: number
+  price: number
   created_at: string
-  customers: {
+  order_id: {
+    status: string
+    customer_id: {
+      name: string
+      email: string
+    }
+  }
+  product_id: {
     name: string
-    email: string
+    user_id: string
   }
 }
 
 export function RecentSales({ className }: { className?: string }) {
   const [sales, setSales] = useState<Sale[]>([])
+  const { user } = useAuth()
 
   useEffect(() => {
     const fetchSales = async () => {
+      if (!user) return
+
       const { data, error } = await supabase
-        .from("orders") // or "order_items" depending on your schema
-        .select(
-          `
+        .from("order_items")
+        .select(`
           id,
-          total,
+          price,
           created_at,
-          customers (
+          order_id (
+            status,
+            customer_id (
+              name,
+              email
+            )
+          ),
+          product_id (
             name,
-            email
+            user_id
           )
-        `
-        )
+        `)
         .order("created_at", { ascending: false })
-        .limit(5)
+        .limit(10)
 
       if (error) {
         console.error("Error fetching sales:", error.message)
-      } else {
-        setSales(data as Sale[])
+        return
       }
+
+      // Filter sales by the current seller
+      const filtered = (data || []).filter(
+        (sale: Sale) => sale.product_id?.user_id === user.id
+      )
+
+      setSales(filtered)
     }
 
     fetchSales()
-  }, [])
+  }, [user])
 
   return (
     <div className={`${className} bg-white p-4 rounded-lg border border-gray-200 shadow-sm`}>
-      <div className="pb-2 sm:pb-4">
-        <h3 className="text-base sm:text-lg font-medium">Recent Sales</h3>
-        <p className="text-xs sm:text-sm text-gray-500">
-          You made {sales.length} sales this month
-        </p>
-      </div>
+      <h3 className="text-base sm:text-lg font-semibold mb-2">Recent Sales</h3>
 
-      <div className="space-y-4 sm:space-y-6">
-        {sales.map((sale) => {
-          const initials = sale.customers?.name
-            ?.split(" ")
-            .map((n) => n[0])
-            .join("")
-            .toUpperCase()
-
-          return (
-            <div key={sale.id} className="flex items-center">
-              <div className="h-8 w-8 sm:h-9 sm:w-9 rounded-full bg-gray-200 flex items-center justify-center">
-                <span className="text-xs">{initials || "??"}</span>
-              </div>
-              <div className="ml-3 sm:ml-4 space-y-1 flex-1 min-w-0">
-                <p className="text-xs sm:text-sm font-medium leading-none truncate">
-                  {sale.customers?.name || "Unknown"}
-                </p>
-                <p className="text-xs text-gray-500 truncate">{sale.customers?.email}</p>
-              </div>
-              <div className="ml-auto font-medium text-xs sm:text-sm">+₹{sale.total}</div>
-            </div>
-          )
-        })}
-      </div>
+      {sales.length === 0 ? (
+        <p className="text-sm text-gray-500">No recent sales found.</p>
+      ) : (
+        <div className="overflow-auto">
+          <table className="min-w-full text-sm border border-gray-200">
+            <thead className="bg-gray-50 text-gray-600 text-left">
+              <tr>
+                <th className="p-2 border-b">Customer</th>
+                <th className="p-2 border-b">Email</th>
+                <th className="p-2 border-b">Product</th>
+                <th className="p-2 border-b">Status</th>
+                <th className="p-2 border-b">Date</th>
+                <th className="p-2 border-b">Amount</th>
+              </tr>
+            </thead>
+            <tbody className="text-gray-700">
+              {sales.map((sale) => (
+                <tr key={sale.id} className="border-t">
+                  <td className="p-2">{sale.order_id.customer_id?.name || "Unknown"}</td>
+                  <td className="p-2">{sale.order_id.customer_id?.email || "No email"}</td>
+                  <td className="p-2">{sale.product_id?.name || "Unknown"}</td>
+                  <td className="p-2 capitalize">{sale.order_id.status}</td>
+                  <td className="p-2">{format(new Date(sale.created_at), "dd MMM yyyy")}</td>
+                  <td className="p-2 font-semibold text-green-700">₹{sale.price}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   )
 }

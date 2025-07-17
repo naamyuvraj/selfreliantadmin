@@ -58,14 +58,18 @@ export function AdminSidebar() {
   const pathname = usePathname()
   const router = useRouter()
 
-  const handleLogout = async () => {
-    const { error } = await supabase.auth.signOut()
-    if (error) {
-      console.error("Logout failed:", error.message)
-    } else {
-      router.push("/") // or router.push("/login") if you have a login page
-    }
+const handleLogout = async () => {
+  const { error } = await supabase.auth.signOut()
+
+  if (error) {
+    console.error("Logout failed:", error.message)
+  } else {
+    // Optional: Clear any local context/state (if you use useAuth())
+    // authDispatch({ type: "LOGOUT" }); // if using reducer pattern
+    router.refresh() // refresh Next.js cache and state
+    router.push("/") // or "/login"
   }
+}
 
   return (
     <div className="admin-sidebar w-full h-full md:w-64 lg:w-72">

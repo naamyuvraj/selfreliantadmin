@@ -1,89 +1,103 @@
-"use client"
+"use client";
 
-import { useEffect, useState } from "react"
-import { supabase } from "@/lib/supabaseClient"
-import { format } from "date-fns"
-import { Loader2 } from "lucide-react"
-import Image from "next/image"
+import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabaseClient";
+import { format } from "date-fns";
+import { Loader2 } from "lucide-react";
+import Image from "next/image";
+import { useAuth } from "@/context/user-context";
 
 interface Order {
-  id: string
-  total: number
-  created_at: string
-  status: string
-  customers: {
-    name: string
-    email: string
-  }
-  order_items: {
-    inventory: {
-      name: string
-      image_urls: string[]
-    }
-  }[]
+  id: string;
+  price: number;
+  created_at: string;
+  order_id: {
+    status: string;
+    customer_id: {
+      name: string;
+      email: string;
+    };
+  };
+  product_id: {
+    id: string;
+    name: string;
+    image_urls: string[];
+    user_id: string;
+    price: number;
+  };
 }
 
 export default function AdminOrdersTable() {
-  const [orders, setOrders] = useState<Order[]>([])
-  const [loading, setLoading] = useState(true)
-  const [statusFilter, setStatusFilter] = useState("all")
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [statusFilter, setStatusFilter] = useState("all");
+  const { user } = useAuth(); // ✅ Get current admin user
 
   useEffect(() => {
     const fetchOrders = async () => {
+      if (!user) return; // Wait until auth is loaded
+
       const { data, error } = await supabase
-        .from("orders")
+        .from("order_items")
         .select(`
           id,
-          total,
+          price,
           created_at,
-          status,
-          customers (
-            name,
-            email
-          ),
-          order_items (
-            inventory (
+          order_id (
+            status,
+            customer_id (
               name,
-              image_urls
+              email
             )
+          ),
+          product_id (
+            id,
+            name,
+            image_urls,
+            user_id,
+            price
           )
         `)
-        .order("created_at", { ascending: false })
+        .order("created_at", { ascending: false });
 
       if (error) {
-        console.error("Error fetching orders:", error.message)
+        console.error("Error fetching orders:", error.message);
       } else {
-        setOrders(data)
+        // ✅ Filter to only include orders where product_id.user_id === logged in admin
+        const filtered = data.filter(
+          (order: Order) => order.product_id?.user_id === user.id
+        );
+        setOrders(filtered);
       }
 
-      setLoading(false)
-    }
+      setLoading(false);
+    };
 
-    fetchOrders()
-  }, [])
+    fetchOrders();
+  }, [user]);
 
   const filteredOrders =
     statusFilter === "all"
       ? orders
-      : orders.filter((order) => order.status === statusFilter)
+      : orders.filter((order) => order.order_id.status === statusFilter);
 
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "completed":
-        return "bg-green-100 text-green-800"
+        return "bg-green-100 text-green-800";
       case "pending":
-        return "bg-yellow-100 text-yellow-800"
+        return "bg-yellow-100 text-yellow-800";
       case "cancelled":
-        return "bg-red-100 text-red-800"
+        return "bg-red-100 text-red-800";
       default:
-        return "bg-gray-100 text-gray-800"
+        return "bg-gray-100 text-gray-800";
     }
-  }
+  };
 
   return (
     <div className="p-4">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-3">
-        <h2 className="text-xl font-semibold">All Orders</h2>
+        <h2 className="text-xl font-semibold">My Orders</h2>
         <select
           className="border border-gray-300 rounded-md px-3 py-1 text-sm focus:outline-none"
           value={statusFilter}
@@ -113,22 +127,28 @@ export default function AdminOrdersTable() {
               <div className="flex justify-between items-start">
                 <div>
                   <p className="text-sm text-gray-600">Order ID:</p>
-                  <p className="text-sm font-medium text-gray-900">{order.id}</p>
+                  <p className="text-sm font-medium text-gray-900">
+                    {order.id}
+                  </p>
                 </div>
                 <span
                   className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusBadge(
-                    order.status
+                    order.order_id.status
                   )}`}
                 >
-                  {order.status}
+                  {order.order_id.status}
                 </span>
               </div>
 
-              <div>
-                <p className="text-sm text-gray-600">Customer:</p>
-                <p className="font-medium text-sm">{order.customers.name}</p>
-                <p className="text-xs text-gray-500">{order.customers.email}</p>
-              </div>
+<div>
+  <p className="text-sm text-gray-600">Customer:</p>
+  <p className="font-medium text-sm">
+    {order.order_id.customer_id?.name ?? "Unknown"}
+  </p>
+  <p className="text-xs text-gray-500">
+    {order.order_id.customer_id?.email ?? "No email"}
+  </p>
+</div>
 
               <div>
                 <p className="text-sm text-gray-600">Date:</p>
@@ -140,34 +160,21 @@ export default function AdminOrdersTable() {
               <div>
                 <p className="text-sm text-gray-600">Amount:</p>
                 <p className="text-green-700 font-semibold text-base">
-                  ₹{order.total}
+                  ₹{order.price}
                 </p>
               </div>
 
-              {Array.isArray(order.order_items) && order.order_items.length > 0 && (
+              {order.product_id?.image_urls?.[0] && (
                 <div>
-                  <p className="text-sm text-gray-600 mb-1">Products:</p>
-                  <div className="flex gap-2 overflow-x-auto">
-                    {order.order_items.map((item, index) =>
-                      item.inventory?.image_urls?.[0] ? (
-                        <Image
-                          key={index}
-                          src={item.inventory.image_urls[0]}
-                          alt={item.inventory.name}
-                          width={64}
-                          height={64}
-                          className="w-16 h-16 rounded object-cover border"
-                        />
-                      ) : (
-                        <div
-                          key={index}
-                          className="w-16 h-16 bg-gray-200 rounded flex items-center justify-center text-xs text-gray-600"
-                        >
-                          No Image
-                        </div>
-                      )
-                    )}
-                  </div>
+                  <p className="text-sm text-gray-600 mb-1">Product:</p>
+                  <Image
+                    src={order.product_id.image_urls[0]}
+                    alt={order.product_id.name}
+                    width={64}
+                    height={64}
+                    className="w-16 h-16 rounded object-cover border"
+                  />
+                  <p className="text-sm mt-1">{order.product_id.name}</p>
                 </div>
               )}
             </div>
@@ -175,5 +182,5 @@ export default function AdminOrdersTable() {
         </div>
       )}
     </div>
-  )
+  );
 }

@@ -6,6 +6,7 @@ import {
   useContext,
   useEffect,
   useState,
+  useRef,
   type ReactNode,
 } from "react";
 import { supabase } from "@/lib/supabaseClient";
@@ -53,31 +54,36 @@ export const AuthProvider = ({
     }
   };
 
-  useEffect(() => {
-    const init = async () => {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const currentUser = sessionData.session?.user ?? null;
-      setUser(currentUser);
+const hasFetchedSession = useRef(false);
+
+useEffect(() => {
+  if (hasFetchedSession.current) return;
+  hasFetchedSession.current = true;
+
+  const init = async () => {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const currentUser = sessionData.session?.user ?? null;
+    setUser(currentUser);
+    setLoading(false);
+
+    if (currentUser) await createUserIfNotExists(currentUser);
+  };
+
+  init();
+
+  const { data: listener } = supabase.auth.onAuthStateChange(
+    async (_event, session) => {
+      const u = session?.user ?? null;
+      setUser(u);
       setLoading(false);
+      if (u) await createUserIfNotExists(u);
+    }
+  );
 
-      if (currentUser) await createUserIfNotExists(currentUser);
-    };
-
-    init();
-
-    const { data: listener } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        const u = session?.user ?? null;
-        setUser(u);
-        setLoading(false);
-        if (u) await createUserIfNotExists(u);
-      }
-    );
-
-    return () => {
-      listener.subscription.unsubscribe();
-    };
-  }, []);
+  return () => {
+    listener.subscription.unsubscribe();
+  };
+}, []);
 
   return (
     <AuthContext.Provider value={{ user, loading }}>

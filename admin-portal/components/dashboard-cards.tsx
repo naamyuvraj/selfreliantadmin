@@ -23,32 +23,43 @@ export function DashboardCards() {
     lowStockCount: 0,
   });
 
-  useEffect(() => {
-    if (!user) return;
-    setLoading(true);
+useEffect(() => {
+  if (!user) return;
+
+  let fetched = false;
+
 const fetchSellerStats = async () => {
   try {
-    const [orderItemsRes, inventoryRes] = await Promise.all([
-      supabase
-        .from("order_items")
-        .select(`
-          order_id,
-          price,
-          quantity,
-          inventory (
-            user_id
-          )
-        `)
-        .eq("inventory.user_id", user.id),
+    if (!user?.id) {
+      console.error("User not logged in or user.id is undefined");
+      return;
+    }
 
-      supabase
-        .from("inventory")
-        .select("quantity")
-        .eq("user_id", user.id),
-    ]);
+    const { data: userInventory, error: inventoryError } = await supabase
+      .from("inventory")
+      .select("id, quantity")
+      .eq("user_id", user.id);
 
-    const orderItems = orderItemsRes.data || [];
-    const inventory = inventoryRes.data || [];
+    if (inventoryError) throw inventoryError;
+
+    const inventoryIds = userInventory.map((item) => item.id);
+
+    if (inventoryIds.length === 0) {
+      setStats({
+        revenue: 0,
+        totalOrders: 0,
+        inventoryCount: 0,
+        lowStockCount: 0,
+      });
+      return;
+    }
+
+const { data: orderItems, error: orderError } = await supabase
+  .from("order_items")
+  .select("order_id, price, quantity, product_id") // 👈 use the actual column
+  .in("product_id", inventoryIds);                 // 👈 match here too
+
+    if (orderError) throw orderError;
 
     const revenue = orderItems.reduce(
       (sum, item) => sum + item.price * item.quantity,
@@ -57,9 +68,8 @@ const fetchSellerStats = async () => {
 
     const uniqueOrderIds = new Set(orderItems.map((item) => item.order_id));
     const totalOrders = uniqueOrderIds.size;
-
-    const inventoryCount = inventory.length;
-    const lowStockCount = inventory.filter((i) => i.quantity < 10).length;
+    const inventoryCount = userInventory.length;
+    const lowStockCount = userInventory.filter((i) => i.quantity < 10).length;
 
     setStats({
       revenue,
@@ -67,15 +77,27 @@ const fetchSellerStats = async () => {
       inventoryCount,
       lowStockCount,
     });
-  } catch (err) {
-    console.error("Error fetching dashboard stats:", err);
+  } catch (err: any) {
+    console.error("Error fetching dashboard stats:", err?.message || err || "Unknown error");
   } finally {
     setLoading(false);
   }
 };
 
-    fetchSellerStats();
-  }, [user]);
+  fetchSellerStats();
+
+  const handleVisibilityChange = () => {
+    if (!fetched && !document.hidden) {
+      fetchSellerStats();
+    }
+  };
+
+  document.addEventListener("visibilitychange", handleVisibilityChange);
+
+  return () => {
+    document.removeEventListener("visibilitychange", handleVisibilityChange);
+  };
+}, [user]);
 
   return (
     <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
