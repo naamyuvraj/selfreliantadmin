@@ -13,7 +13,7 @@ export function GoogleLoginButton() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
-        redirectTo: "https://adminselfreliant-yuvraj.vercel.app/dashboard", // Adjust this URL to your actual dashboard URL
+        redirectTo: "https://adminkarigarroots-yuvraj.vercel.app/dashboard", // Adjust this URL to your actual dashboard URL
       },
     });
 
