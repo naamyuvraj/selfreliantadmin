@@ -32,53 +32,43 @@ export const AuthProvider = ({
 }) => {
   const [user, setUser] = useState<User | null>(initialSession?.user ?? null);
   const [session, setSession] = useState<Session | null>(initialSession ?? null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false); // ✅ no need to wait if initialSession exists
 
   const createUserIfNotExists = async (user: User) => {
-    const { data } = await supabase
-      .from("users")
-      .select("id")
-      .eq("id", user.id)
-      .maybeSingle();
+    try {
+      const { data } = await supabase
+        .from("users")
+        .select("id")
+        .eq("id", user.id)
+        .maybeSingle();
 
-    if (!data) {
-      const { error } = await supabase.from("users").insert({
-        id: user.id,
-        name: user.user_metadata?.full_name || "",
-        phone: "",
-        address: "",
-        bio: "",
-      });
-      if (error) console.error("❌ Failed to insert user:", error.message);
+      if (!data) {
+        const { error } = await supabase.from("users").insert({
+          id: user.id,
+          name: user.user_metadata?.full_name || "",
+          phone: "",
+          address: "",
+          bio: "",
+        });
+        if (error) console.error("❌ Failed to insert user:", error.message);
+      }
+    } catch (err) {
+      console.error("❌ Error checking user:", err);
     }
   };
 
-  const hasFetchedSession = useRef(false);
-
+  // ✅ Handle auth state changes
   useEffect(() => {
-    if (hasFetchedSession.current) return;
-    hasFetchedSession.current = true;
-
-    const init = async () => {
-      const { data: sessionData } = await supabase.auth.getSession();
-      setSession(sessionData.session);
-      const currentUser = sessionData.session?.user ?? null;
-      setUser(currentUser);
-      setLoading(false);
-
-      if (currentUser) await createUserIfNotExists(currentUser);
-    };
-
-    init();
-
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
       setSession(session);
       const u = session?.user ?? null;
       setUser(u);
       setLoading(false);
-      if (_event === "SIGNED_IN" && u) {
+
+      // ✅ only create user on new sign in
+      if (event === "SIGNED_IN" && u) {
         await createUserIfNotExists(u);
       }
     });
